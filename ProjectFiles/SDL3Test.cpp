@@ -1,3 +1,12 @@
+/******************************************************************************
+* [Title]: Snake in SDL3
+* [Author]: Xander Bruce
+* [Date]: 3-25-2025
+*
+* [Description]: Snake in SDL3 using C++
+*
+******************************************************************************/
+
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <iostream>
@@ -11,7 +20,7 @@ typedef uint16_t uint16;
 typedef uint32_t uint32;
 typedef uint64_t uint64;
 
-//***** Screen Behavior *****\\
+//***** Defines & Constants *****\\
 
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 800
