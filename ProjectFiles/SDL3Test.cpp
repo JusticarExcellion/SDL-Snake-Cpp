@@ -9,13 +9,15 @@
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
-#include <iostream>
+#include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <cmath>
 
 //***** Basic Type Definitions *****\\
 
-typedef uint8_t ubool8;
+typedef uint8_t   uint8;
+typedef uint8_t  ubool8;
 typedef uint16_t uint16;
 typedef uint32_t uint32;
 typedef uint64_t uint64;
@@ -92,10 +94,10 @@ UnpauseTimer( Timer &timer )
 	}
 }
 
-uint32
+uint64
 GetTicks( Timer &timer )
 {
-	uint32 time = 0;
+	uint64 time = 0;
 	if( timer.Started )
 	{
 		if( timer.Paused )
@@ -114,23 +116,43 @@ GetTicks( Timer &timer )
 Block*
 GenerateNewPickup( Block* Snake, uint32 snakeCount )
 { //Creates a new pickup away from player
-	//TODO: We Should First Randomize the quadrant the block spawns in, then pick a point inside the quadrant, see if the point collides with the snake if it does Restart the process
+
+	const uint16 Quad_Length = GRID_WIDTH  / 2;
+	const uint16 Quad_Height = GRID_HEIGHT / 2;
+
 	Block* Pickup = ( Block* )malloc( sizeof( Block ) );
 	if( Pickup == NULL )
 	{
 		return NULL;
 	}
 
+	Vector2 Quadrant = {};
+
+	Quadrant.x = ( rand() % 2 );
+	Quadrant.y = ( rand() % 2 );
+
+	//NOTE: We normalize the snake's head coordinates so that we can identify which quadrant it's in
+	float snakeQuad_x = std::roundf( (float)Snake[0].x / GRID_WIDTH  );
+	float snakeQuad_y = std::roundf( (float)Snake[0].y / GRID_HEIGHT );
+
+	if( ( Quadrant.x == (int)snakeQuad_x ) && ( Quadrant.y == (int)snakeQuad_y ) || ( snakeCount > 200 ) )
+	{ // Flip the quadrant if we are in the same quadrant as the snake head
+		Quadrant.x = ( Quadrant.x == 1 ) ? 0 : 1;
+		Quadrant.y = ( Quadrant.y == 1 ) ? 0 : 1;
+	}
+
 	uint32 player_x = Snake[0].x;
 	uint32 player_y = Snake[0].y;
 
-	int pickup_x = player_x + ( (rand() % ( GRID_WIDTH - MIN_SPAWN_DISTANCE ) ) + MIN_SPAWN_DISTANCE - ( GRID_WIDTH / 2 ) );
-	if( pickup_x < 0 ) pickup_x = 0;
-	if( pickup_x > GRID_WIDTH  ) pickup_x = GRID_WIDTH;
+	uint32 pickup_x = ( rand() %  Quad_Length ) + ( Quad_Length * Quadrant.x  );
+	uint32 pickup_y = ( rand() %  Quad_Height ) + ( Quad_Height * Quadrant.y  );
 
-	int pickup_y = player_y + ( (rand() % ( GRID_HEIGHT - MIN_SPAWN_DISTANCE ) ) + MIN_SPAWN_DISTANCE - ( GRID_HEIGHT / 2 ) );
-	if( pickup_y < 0 ) pickup_y = 0;
-	if( pickup_y > GRID_HEIGHT  ) pickup_y = GRID_HEIGHT;
+	//TODO: If our Pickup block coordinates collides with the Snake body then we need to resample our placement point based on the following criteria
+	// If we have a longer body then we need to be careful where we put the pickup point
+	// The player could just be gunning forward for a variable length
+	// The player could be layering their movement to resemble a looping rope
+	// It could be a combination of both, at a certain length the majority of the body could lie on the other side of the "map"
+	// When resampling it's okay to not worry about what quadrant the head is in
 
 	Pickup->x = pickup_x;
 	Pickup->y = pickup_y;
@@ -186,7 +208,6 @@ main( int argc, char **argv )
 	SDL_Window* Window = SDL_CreateWindow("Snake Game", WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_FLAGS );
 	if( Window == NULL )
 	{
-		std::cerr << "SDL_CreateWindow Error: " << SDL_GetError() << "\n";
 		SDL_Quit();
 		return 1;
 	}
@@ -194,7 +215,6 @@ main( int argc, char **argv )
 	SDL_Renderer* Renderer = SDL_CreateRenderer( Window, RENDERERING_DRIVER_NAME );
 	if( Renderer == NULL )
 	{
-		std::cerr << "SDL_CreateRenderer Error: " << SDL_GetError() << "\n";
 		SDL_DestroyWindow( Window );
 		SDL_Quit();
 		return 1;
@@ -214,6 +234,8 @@ main( int argc, char **argv )
 	Block* CurrentPickup = NULL;
 
 	Timer timer = {};
+
+	ubool8 Paused = false;
 
 
 	//****** Game Loop ******\\
@@ -249,6 +271,19 @@ main( int argc, char **argv )
 						break;
 						case SDLK_R:
 							Restart( Snake, snakeSize );
+						break;
+
+						case SDLK_SPACE:
+							if(! Paused )
+							{
+								Paused = true;
+								PauseTimer( timer );
+							}
+							else
+							{
+								Paused = false;
+								UnpauseTimer( timer );
+							}
 						break;
 					}
 				break;
@@ -286,54 +321,56 @@ main( int argc, char **argv )
 			}
 		}
 
-		//Clear Screen
-		SDL_SetRenderDrawColor( Renderer, 0, 0, 0, 255 );
-		SDL_RenderClear( Renderer );
-
-		//Drawing the test box
-		SDL_SetRenderDrawColor( Renderer, 255, 255, 255, 255 );
-		for( uint32 i = 0; i < snakeSize; i++ )
+		if( !Paused )
 		{
-			Block* currentBlock = &Snake[i];
-			currentBlock->px = currentBlock->x;
-			currentBlock->py = currentBlock->y;
 
-			if( i != 0 )
+			//Clear Screen
+			SDL_SetRenderDrawColor( Renderer, 0, 0, 0, 255 );
+			SDL_RenderClear( Renderer );
+
+			//Drawing the test box
+			SDL_SetRenderDrawColor( Renderer, 255, 255, 255, 255 );
+			for( uint32 i = 0; i < snakeSize; i++ )
 			{
-				currentBlock->x = Snake[i - 1].px;
-				currentBlock->y = Snake[i - 1].py;
+				Block* currentBlock = &Snake[i];
+				currentBlock->px = currentBlock->x;
+				currentBlock->py = currentBlock->y;
+
+				if( i != 0 )
+				{
+					currentBlock->x = Snake[i - 1].px;
+					currentBlock->y = Snake[i - 1].py;
+				}
+				else
+				{
+					currentBlock->x = currentBlock->x + direction.x;
+					currentBlock->y = currentBlock->y + direction.y;
+				}
+
+				float x = ( currentBlock->x * (float)GRID_SIZE );
+				float y = ( currentBlock->y * (float)GRID_SIZE );
+				SDL_FRect tempRect = { x , y, GRID_SIZE, GRID_SIZE };
+				SDL_RenderFillRect( Renderer , &tempRect );
 			}
-			else
+
+			//Render Pickup
+			if( CurrentPickup != NULL )
 			{
-				currentBlock->x = currentBlock->x + direction.x;
-				currentBlock->y = currentBlock->y + direction.y;
+				float x = ( CurrentPickup->x * (float)GRID_SIZE );
+				float y = ( CurrentPickup->y * (float)GRID_SIZE );
+				SDL_FRect temp = { x, y, GRID_SIZE, GRID_SIZE  };
+				SDL_RenderFillRect( Renderer , &temp );
 			}
 
-			float offset = GRID_SIZE / 2.0;
-			float x = ( currentBlock->x * GRID_SIZE ) - offset;
-			float y = ( currentBlock->y * GRID_SIZE ) - offset;
-			SDL_FRect tempRect = { x , y, GRID_SIZE, GRID_SIZE };
-			SDL_RenderFillRect( Renderer , &tempRect );
-		}
+			//Present Frame
+			SDL_RenderPresent( Renderer );
 
-		//Render Pickup
-		if( CurrentPickup != NULL )
-		{
-			float offset = GRID_SIZE / 2.0;
-			float x = ( CurrentPickup->x * GRID_SIZE ) - offset;
-			float y = ( CurrentPickup->y * GRID_SIZE ) - offset;
-			SDL_FRect temp = { x, y, GRID_SIZE, GRID_SIZE  };
-			SDL_RenderFillRect( Renderer , &temp );
-		}
-
-		//Present Frame
-		SDL_RenderPresent( Renderer );
-
-		//Capping FPS
-		uint32 frameTicks = GetTicks( timer );
-		if( frameTicks < SCREEN_TICKS_PER_FRAME )
-		{
-			SDL_Delay( SCREEN_TICKS_PER_FRAME - frameTicks );
+			//Capping FPS
+			uint64 frameTicks = GetTicks( timer );
+			if( frameTicks < SCREEN_TICKS_PER_FRAME )
+			{
+				SDL_Delay( (uint32)(SCREEN_TICKS_PER_FRAME - frameTicks) );
+			}
 		}
 	}
 
